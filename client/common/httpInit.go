@@ -15,7 +15,7 @@ var tlsConfig *tls.Config
 
 func init() {
 	rootCAs := x509.NewCertPool()
-	caCertPath := "/home/andrejs/snap/code/181/.local/share/mkcert/rootCA.pem"
+	caCertPath := os.Getenv("VARUNA_LOCAL_CA")
 
 	caCert, err := os.ReadFile(caCertPath)
 	if err != nil {
