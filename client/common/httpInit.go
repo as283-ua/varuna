@@ -7,6 +7,9 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
 )
 
 var HttpClient http.Client
@@ -30,11 +33,12 @@ func init() {
 		RootCAs: rootCAs,
 	}
 
+	tr := &http3.Transport{
+		TLSClientConfig: tlsConfig,
+		QUICConfig:      &quic.Config{},
+	}
 	HttpClient = http.Client{
-		Timeout: 5 * time.Second,
-		Transport: &http.Transport{
-			TLSHandshakeTimeout: 5 * time.Second,
-			TLSClientConfig:     tlsConfig,
-		},
+		Timeout:   5 * time.Second,
+		Transport: tr,
 	}
 }
