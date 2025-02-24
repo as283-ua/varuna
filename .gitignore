@@ -26,3 +26,9 @@ go.work.sum
 
 server
 client
+
+**.pem
+**.key
+**.crt
+**.csr
+**.ext

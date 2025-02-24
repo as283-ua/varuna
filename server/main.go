@@ -10,14 +10,18 @@ import (
 	"github.com/quic-go/quic-go/http3"
 )
 
-const addr = "0.0.0.0:4433"
+const (
+	addr = "0.0.0.0:4433"
+	cert = "../varuna.cauth.crt"
+	key  = "../varuna.cauth.key"
+)
 
 func main() {
 	router := http.NewServeMux()
 
 	router.Handle("GET /hello", http.HandlerFunc(handler.HandleHello))
 
-	fmt.Println("Server started on " + addr)
+	fmt.Println("Server started on https://" + addr)
 
 	if useHttp3 := true; useHttp3 {
 		server := &http3.Server{
@@ -26,11 +30,11 @@ func main() {
 			TLSConfig: TLSConfig(),
 		}
 
-		if err := server.ListenAndServeTLS("127.0.0.1.pem", "127.0.0.1-key.pem"); err != nil {
+		if err := server.ListenAndServeTLS(cert, key); err != nil {
 			panic(err)
 		}
 	} else {
-		if err := http.ListenAndServeTLS(addr, "127.0.0.1.pem", "127.0.0.1-key.pem", router); err != nil {
+		if err := http.ListenAndServeTLS(addr, cert, key, router); err != nil {
 			panic(err)
 		}
 	}
@@ -38,7 +42,7 @@ func main() {
 }
 
 func TLSConfig() *tls.Config {
-	cert, err := tls.LoadX509KeyPair("127.0.0.1.pem", "127.0.0.1-key.pem")
+	cert, err := tls.LoadX509KeyPair(cert, key)
 	if err != nil {
 		log.Fatal(err)
 	}
