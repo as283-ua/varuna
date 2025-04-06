@@ -1,0 +1,626 @@
+openapi: 3.0.3
+info:
+  title: Varuna Docs
+  description:
+    PI Project
+  version: 1.0.0
+servers:
+  - url: https://localhost:8080
+tags:
+  - name: Users
+    description: App users
+  - name: Document
+paths:
+  /login:
+    post:
+      tags:
+        - Users
+      description: 'Login'
+      requestBody:
+        description: Fields for logging in, returns session token
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginReq"
+      responses:
+        '200':
+          description: Successfully authenticated, returns a JWT token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResp"
+        '400':
+          description: Bad request. All fields are required.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "All fields are required."
+        '401':
+          description: Unauthorized. Invalid username or password.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Invalid username or password."
+        '500':
+          description: Internal server error. Something went wrong while generating the token or logging in.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Internal server error."
+  /refresh:
+    post:
+      tags:
+        - Users
+      description: 'Use refresh token to get new access token'
+      requestBody:
+        description: Fields for logging in, returns session token
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshReq"
+      responses:
+        '200':
+          description: Successfully authenticated, returns a JWT token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResp"
+        '400':
+          description: Bad request. All fields are required.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "All fields are required."
+        '401':
+          description: Unauthorized. Invalid username or password.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Invalid username or password."
+        '500':
+          description: Internal server error. Something went wrong while generating the token or logging in.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Internal server error."
+          
+  /users:
+    post:
+      tags:
+        - Users
+      description: Create Users. Only an admin may create a user for a new employee
+      operationId: createUsers
+      requestBody:
+        description: Fields for creating a new user
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterReq"
+      responses:
+        '201':
+          description: User successfully created, returns a JWT token.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "User created successfully"
+        '400':
+          description: Bad request. Either a field is missing or invalid format.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Invalid email format"  # Or other validation errors
+        '500':
+          description: Internal server error. Failed to process password or generate token.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Error processing password"  # Or other internal errors
+    get:
+      tags:
+        - Users
+      description: 'List all users except the one making the request'
+      operationId: listUsers
+      parameters:
+        - name: search
+          in: query
+          description: Search field value.
+          required: false
+          schema:
+            type: string
+        - name: page
+          in: query
+          description: The page number to retrieve.
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: size
+          in: query
+          description: The number of users to retrieve per page.
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 10
+      responses:
+        '200':
+          description: List of users.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserPublic"
+         
+  /roles/{role}/users:   
+    get:
+      tags:
+        - Users
+      description: 'List all users except the one making the request that have the specified role'
+      operationId: listUsersByRole
+      parameters:
+        - name: role
+          in: path
+          description: 'User role'
+          required: true
+          schema:
+            type: string
+        - name: search
+          in: query
+          description: Search field value.
+          required: false
+          schema:
+            type: string
+        - name: page
+          in: query
+          description: The page number to retrieve.
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: size
+          in: query
+          description: The number of users to retrieve per page.
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 10
+      responses:
+        '200':
+          description: List of users.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                example:
+                  - "ask38"
+                  - "dlc4"
+                  - "aic1"
+          
+  /users/{username}:
+    get:
+      tags:
+        - Users
+      description: Primarily used to obtain the public key and share a doc
+      operationId: getUsersByName
+      parameters:
+        - name: search
+          in: query
+          description: Search field value.
+          required: false
+          schema:
+            type: string
+        - name: username
+          in: path
+          description: 'The name that needs to be fetched. Use Users1 for testing. '
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPublic'
+        '404':
+          description: Users not found
+          
+  /users/{username}/creds:
+    put:
+      tags:
+        - Users
+      description: Change user credentials
+      operationId: updateUser
+      parameters:
+        - name: search
+          in: query
+          description: Search field value.
+          required: false
+          schema:
+            type: string
+        - name: username
+          in: path
+          description: 'The name that needs to be fetched. Use Users1 for testing. '
+          required: true
+          schema:
+            type: string
+      requestBody:
+        description: Fields for creating a new user
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginChangeReq"
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPublic'
+        '404':
+          description: Users not found
+          
+  /docs/{docId}:
+    get:
+      tags:
+        - Document
+      description: Get doc info. Must have appropriate roles or user log in to access.
+      operationId: getDocument
+      parameters:
+        - name: docId
+          in: path
+          description: 'The doc that needs to be fetched.'
+          required: true
+          schema:
+            type: string
+      security:
+        - token: []
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+        '404':
+          description: Document not found
+    
+  /docs/{docId}/download:
+    get:
+      tags:
+        - Document
+      description: Download a doc if the user role matches the doc permissions. Must have appropriate roles or user log in to access.
+      operationId: downloadDocument
+      parameters:
+        - name: docId
+          in: path
+          description: 'The doc that needs to be fetched.'
+          required: true
+          schema:
+            type: string
+      security:
+        - token: []
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Document not found
+          
+  /docs/upload:
+    post:
+      tags:
+        - Document
+      description: Upload a doc to your account
+      operationId: uploadDocument
+      parameters:
+        - name: docName
+          in: query
+          description: 'Name of the doc to display in the app'
+          required: true
+          schema:
+            type: string
+        - name: X-Hash
+          in: header
+          description: 'Hash value of the original doc to verify integrity'
+          required: true
+          schema:
+            type: string
+      security:
+        - token: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                doc:
+                  type: string
+                  format: binary
+                  description: The doc to upload.
+      responses:
+        '200':
+          description: Document uploaded successfully
+        '400':
+          description: Bad Request
+  
+  /docs/{docId}/perms:
+    put:
+      tags:
+        - Document
+      description: Change doc permissions
+      operationId: changeDocPermissions
+      parameters:
+        - name: docId
+          in: path
+          required: true
+          schema:
+            type: string
+      security:
+        - token: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SharePermissions"
+      responses:
+        '200':
+          description: Document permissions changed successfully
+        '400':
+          description: Bad Request
+    get:
+      tags:
+        - Document
+      description: Get doc permissions
+      operationId: getDocPermissions
+      parameters:
+        - name: docId
+          in: path
+          description: Identifier of the doc
+          required: true
+          schema:
+            type: string
+      security:
+        - token: []
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+               schema:
+                $ref: "#/components/schemas/SharePermissions"
+  
+  /docs/{docId}/delete:
+    delete:
+      tags:
+        - Document
+      description: Only the owner may perform this action on a document
+      operationId: deleteDocument
+      parameters:
+        - name: docId
+          in: path
+          description: Identifier of the doc to delete
+          required: true
+          schema:
+            type: string
+      security:
+        - token: []
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Document not found
+        '401':
+          description: Unauthorized
+          
+  /roles/{role}/docs:
+    get:
+      tags:
+        - Document
+      description: List the docs of a specific User
+      operationId: listDocuments
+      parameters:
+        - name: role
+          in: path
+          description: 'Docs accessible by a certain role'
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: query
+          description: The page number to retrieve.
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: size
+          in: query
+          description: The number of users to retrieve per page.
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 10
+      security:
+        - token: []
+      responses:
+        '200':
+          description: successful operation
+          headers: 
+            X-Total-Pages:  # Added header for total pages
+              description: Total number of pages available
+              schema:
+                type: integer
+          content:
+            application/json:
+               schema:
+                type: array  # Changed back to array
+                items:
+                  $ref: "#/components/schemas/Document"
+                  
+    
+
+components:
+  schemas:
+    UserPublic:
+      type: object
+      properties:
+        username:
+          type: string
+          example: "ask38"
+        roles:
+          items:
+            type: string
+          example: 
+            - "admin"
+            - "apps"
+
+    RegisterReq:
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+        username:
+          type: string
+
+    LoginChangeReq:
+      type: object
+      properties:
+        prev-password:
+          type: string
+        new-password:
+          type: string
+    
+    Document:
+      type: object
+      properties: 
+        docId:
+          type: integer
+          format: int64
+        docName:
+          type: string
+        hash:
+          type: string
+        description:
+          type: string
+        creationDate:
+          type: string
+        permissions:
+          $ref: "#/components/schemas/SharePermissions"
+    
+    LoginReq:
+      type: object
+      properties:
+        username:
+          type: string
+          example: momazos_diego
+        password:
+          type: string
+          format: password
+          example: pass1234
+      required:
+        - username
+        - password
+        
+    LoginResp:
+      type: object
+      properties:
+        token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        refresh-token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+      required:
+        - token
+        
+        
+    RefreshReq:
+      type: object
+      properties:
+        token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+      required:
+        - username
+        - password
+        
+    
+    SharePermissions:
+      type: object
+      properties:
+        roles:
+          type: array
+          items:
+            type: string
+          example:
+            - "qa"
+            - "apps"
+        users:
+          type: array
+          items:
+            type: string
+          example:
+            - "pmi4"
+      required:
+        - username
+        - encAes
+    
+  securitySchemes:
+    token:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
