@@ -10,6 +10,8 @@ package server
 
 import (
 	"net/http"
+	"varuna-openapi/internal/server/db"
+	"varuna-openapi/internal/server/util"
 )
 
 func CreateUsers(w http.ResponseWriter, r *http.Request) {
@@ -34,7 +36,29 @@ func ListUsersByRole(w http.ResponseWriter, r *http.Request) {
 
 func LoginPost(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	reqJson := &LoginReq{}
+	util.DecodeJSON(r.Body, reqJson)
+
+	user, ok := db.DB.Users[reqJson.Username]
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if user.Password != reqJson.Password {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	resp := &LoginResp{
+		Token:        reqJson.Username,
+		RefreshToken: reqJson.Username,
+	}
+
+	respBytes := util.EncodeJSON(resp)
+
 	w.WriteHeader(http.StatusOK)
+	w.Write(respBytes)
 }
 
 func RefreshPost(w http.ResponseWriter, r *http.Request) {

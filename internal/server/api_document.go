@@ -9,7 +9,17 @@
 package server
 
 import (
+	"crypto/sha512"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+	"varuna-openapi/internal/server/db"
 )
 
 func ChangeDocPermissions(w http.ResponseWriter, r *http.Request) {
@@ -39,10 +49,172 @@ func GetDocument(w http.ResponseWriter, r *http.Request) {
 
 func ListRoleDocuments(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		http.Error(w, `{"error": "Authorization header required"}`, http.StatusBadRequest)
+		return
+	}
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+		http.Error(w, `{"error": "Invalid Authorization header format"}`, http.StatusBadRequest)
+		return
+	}
+
+	path := strings.TrimPrefix(r.URL.Path, "/roles/")
+	parts = strings.SplitN(path, "/", 2)
+	if len(parts) < 2 || parts[1] != "docs" {
+		http.Error(w, `{"error": "Invalid path"}`, http.StatusBadRequest)
+		return
+	}
+	role := db.Role(parts[0])
+
+	token := parts[1]
+	user, ok := db.DB.Users[token]
+	if !ok {
+		http.Error(w, `{"error": "Invalid token"}`, http.StatusBadRequest)
+		return
+	}
+
+	hasRole := false
+	for _, r := range user.Roles {
+		if r == string(role) {
+			hasRole = true
+			break
+		}
+	}
+	if !hasRole {
+		http.Error(w, `{"error": "User does not have the requested role"}`, http.StatusBadRequest)
+		return
+	}
+
+	filesIdx, ok := db.DB.RoleFiles[role]
+	if !ok {
+		http.Error(w, `{"error": "Role not found"}`, http.StatusBadRequest)
+		return
+	}
+
+	page := 1
+	size := 10
+	if p := r.URL.Query().Get("page"); p != "" {
+		if val, err := strconv.Atoi(p); err == nil && val >= 1 {
+			page = val
+		}
+	}
+	if s := r.URL.Query().Get("size"); s != "" {
+		if val, err := strconv.Atoi(s); err == nil && val >= 1 {
+			size = val
+		}
+	}
+
+	start := (page - 1) * size
+	if start >= len(filesIdx) {
+		w.Header().Set("X-Total-Pages", "1")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("[]"))
+		return
+	}
+
+	end := start + size
+	if end > len(filesIdx) {
+		end = len(filesIdx)
+	}
+
+	result := make([]Document, 0, end-start)
+	for _, idx := range filesIdx[start:end] {
+		f := db.DB.Files[idx]
+
+		doc := Document{
+			DocId:        int64(idx),
+			DocName:      f.Name,
+			Hash:         "", // hash is not stored in your db.File, add it if needed
+			Description:  "", // no description in File, same as above
+			CreationDate: f.CreatedAt.Format(time.RFC3339),
+			Permissions: &SharePermissions{
+				Roles: f.Roles,
+			},
+		}
+		result = append(result, doc)
+	}
+
+	totalPages := (len(filesIdx) + size - 1) / size
+	w.Header().Set("X-Total-Pages", strconv.Itoa(totalPages))
 	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(result)
 }
 
 func UploadDocument(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		http.Error(w, `{"error": "Authorization header required"}`, http.StatusBadRequest)
+		return
+	}
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+		http.Error(w, `{"error": "Invalid Authorization header format"}`, http.StatusBadRequest)
+		return
+	}
+	token := parts[1]
+	user, ok := db.DB.Users[token]
+	if !ok {
+		http.Error(w, `{"error": "Invalid token"}`, http.StatusBadRequest)
+		return
+	}
+
+	err := r.ParseMultipartForm(10 << 20) // limit ~10MB
+	if err != nil {
+		http.Error(w, `{"error": "Failed to parse multipart form"}`, http.StatusBadRequest)
+		return
+	}
+
+	docName := r.URL.Query().Get("docName")
+	if docName == "" {
+		http.Error(w, `{"error": "Missing required query parameter: docName"}`, http.StatusBadRequest)
+		return
+	}
+
+	hashHeader := r.Header.Get("X-Hash")
+	if hashHeader == "" {
+		http.Error(w, `{"error": "Missing required header: X-Hash"}`, http.StatusBadRequest)
+		return
+	}
+
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, `{"error": "Missing or invalid file field"}`, http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	hasher := sha512.New()
+	data, err := io.ReadAll(io.TeeReader(file, hasher))
+	if err != nil {
+		http.Error(w, `{"error": "Failed to read file content"}`, http.StatusBadRequest)
+		return
+	}
+	calculatedHash := hex.EncodeToString(hasher.Sum(nil))
+
+	if calculatedHash != hashHeader {
+		http.Error(w, `{"error": "Hash mismatch: file integrity check failed"}`, http.StatusBadRequest)
+		return
+	}
+
+	filePath := fmt.Sprintf("files/%s", docName)
+	err = os.WriteFile(filePath, data, 0644)
+	if err != nil {
+		http.Error(w, `{"error": "Failed to store file on server"}`, http.StatusInternalServerError)
+		return
+	}
+
+	fmt.Printf("Storing document '%s' for user '%s' (%d bytes)\n", docName, user.Username, len(data))
+	db.DB.AddFile(db.File{
+		Name:      docName,
+		Owner:     token,
+		Roles:     user.Roles,
+		CreatedAt: time.Now(),
+	})
+
 	w.WriteHeader(http.StatusOK)
 }
