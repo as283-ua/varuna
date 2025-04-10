@@ -5,6 +5,8 @@ import (
 	"context"
 	"crypto/sha512"
 	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -14,7 +16,6 @@ import (
 	"varuna-openapi/internal/client"
 
 	"github.com/antihax/optional"
-	"github.com/chzyer/readline"
 	"golang.org/x/term"
 )
 
@@ -24,7 +25,7 @@ const USERAPI_HELP = `Options:
 	2 - List users
 	3 - Get users by name
 	4 - List users by role
-	5 - Update user`
+	5 - Update user password`
 
 const DOCAPI_HELP = `Options:
 	0 - Upload
@@ -35,32 +36,79 @@ const DOCAPI_HELP = `Options:
 	5 - Change doc permissions
 	6 - Get doc meta-data`
 
+type UserOp int
+
+const (
+	CREATE_USER UserOp = iota
+	LOGIN
+	LIST_USERS
+	GET_USER
+	USERS_BY_ROLE
+	PASSWD
+)
+
+type DocOp int
+
+const (
+	UPLOAD DocOp = iota
+	DOWNLOAD
+	DELETE
+	DOC_ROLES
+	GETMOD
+	CHMOD
+	GETDOC
+)
+
+var ctx context.Context
+
 func handleUserApi(taskId int) {
 	var err error
 	cfg := client.NewConfiguration()
 	apiClient := client.NewAPIClient(cfg)
-	ctx := context.Background()
 
 	cmdReader := bufio.NewReader(os.Stdin)
 
-	switch taskId {
-	case 0:
+	switch UserOp(taskId) {
+	case CREATE_USER:
 		fmt.Print("Username: ")
 		username, _, _ := cmdReader.ReadLine()
 		fmt.Print("Email: ")
 		email, _, _ := cmdReader.ReadLine()
 		fmt.Print("Password: ")
 		pass, _ := term.ReadPassword(int(syscall.Stdin))
+		fmt.Println()
 		req := client.RegisterReq{Email: string(email), Password: string(pass), Username: string(username)}
 		apiClient.UsersApi.CreateUsers(ctx, req)
-	case 1:
+	case LOGIN:
 		fmt.Print("Username: ")
 		username, _, _ := cmdReader.ReadLine()
 		fmt.Print("Password: ")
 		pass, _ := term.ReadPassword(int(syscall.Stdin))
+		fmt.Println()
 		req := client.LoginReq{Username: string(username), Password: string(pass)}
-		apiClient.UsersApi.LoginPost(ctx, req)
-	case 2:
+		login, _, err := apiClient.UsersApi.LoginPost(ctx, req)
+		if err != nil {
+			var swagErr *client.GenericSwaggerError = &client.GenericSwaggerError{}
+			if errors.As(err, swagErr) {
+				fmt.Println("Error:", swagErr.Error(), swagErr.Body())
+				return
+			}
+			fmt.Println(err.Error())
+			return
+		}
+
+		tokenContent, err := json.Marshal(login)
+		if err != nil {
+			fmt.Println("Logged in but got another error:", err.Error())
+			return
+		}
+
+		err = os.WriteFile("token.json", tokenContent, 0600)
+		if err != nil {
+			fmt.Println("Save token error:", err.Error())
+			return
+		}
+	case LIST_USERS:
 		var page, count int
 		for {
 			fmt.Print("Items per page: ")
@@ -90,11 +138,11 @@ func handleUserApi(taskId int) {
 			Page: optional.NewInt32(int32(page)),
 			Size: optional.NewInt32(int32(count))}
 		apiClient.UsersApi.ListUsers(ctx, req)
-	case 3:
+	case GET_USER:
 		fmt.Print("Username: ")
 		username, _, _ := cmdReader.ReadLine()
 		apiClient.UsersApi.GetUserByName(ctx, string(username))
-	case 4:
+	case USERS_BY_ROLE:
 		fmt.Print("Role search: ")
 		role, _, _ := cmdReader.ReadLine()
 		var page, count int
@@ -127,12 +175,14 @@ func handleUserApi(taskId int) {
 			Size: optional.NewInt32(int32(count)),
 		}
 		apiClient.UsersApi.ListUsersByRole(ctx, string(role), req)
-	case 5:
+	case PASSWD:
 		fmt.Print("Username: ")
 		username, _, _ := cmdReader.ReadLine()
 		fmt.Print("Prev password: ")
 		prevPass, _ := term.ReadPassword(int(syscall.Stdin))
+		fmt.Println()
 		fmt.Print("New password: ")
+		fmt.Println()
 		newPass, _ := term.ReadPassword(int(syscall.Stdin))
 		body := client.LoginChangeReq{
 			PrevPassword: string(prevPass),
@@ -148,14 +198,19 @@ func handleDocApi(taskId int) {
 	var err error
 	cfg := client.NewConfiguration()
 	apiClient := client.NewAPIClient(cfg)
-	ctx := context.Background()
 
 	cmdReader := bufio.NewReader(os.Stdin)
 
-	switch taskId {
-	case 0:
-		fileMsg, _ := readline.ReadMessage(cmdReader)
-		file, err := os.Open(string(fileMsg.Data))
+	switch DocOp(taskId) {
+	case UPLOAD:
+		fmt.Print("File path: ")
+		fileMsg, _, err := cmdReader.ReadLine()
+		if err != nil {
+			fmt.Println(err.Error())
+			os.Exit(1)
+			return
+		}
+		file, err := os.Open(string(fileMsg))
 		if err != nil {
 			fmt.Println(err.Error())
 			os.Exit(1)
@@ -172,8 +227,18 @@ func handleDocApi(taskId int) {
 
 		hash := hasher.Sum(nil)
 		hash64 := base64.StdEncoding.EncodeToString(hash)
-		apiClient.DocumentApi.UploadDocument(ctx, file, hash64, string(docName))
-	case 1:
+		_, err = apiClient.DocumentApi.UploadDocument(ctx, file, hash64, string(docName))
+		if err != nil {
+			var swagErr *client.GenericSwaggerError = &client.GenericSwaggerError{}
+			if errors.As(err, swagErr) {
+				fmt.Println("Error:", swagErr.Error(), string(swagErr.Body()))
+				return
+			}
+			fmt.Println(err.Error())
+			return
+		}
+		fmt.Println("Uploaded document successfully")
+	case DOWNLOAD:
 		var id string
 		for {
 			fmt.Print("Doc id: ")
@@ -187,7 +252,7 @@ func handleDocApi(taskId int) {
 			}
 		}
 		apiClient.DocumentApi.DownloadDocument(ctx, id)
-	case 3:
+	case DOC_ROLES:
 		fmt.Print("Role: ")
 		role, _, _ := cmdReader.ReadLine()
 		var page, count int
@@ -220,7 +285,7 @@ func handleDocApi(taskId int) {
 			Size: optional.NewInt32(int32(count)),
 		}
 		apiClient.DocumentApi.ListRoleDocuments(ctx, string(role), opts)
-	case 2:
+	case DELETE:
 		var id string
 		for {
 			fmt.Print("Doc id: ")
@@ -234,7 +299,7 @@ func handleDocApi(taskId int) {
 			}
 		}
 		apiClient.DocumentApi.DeleteDocument(ctx, id)
-	case 5:
+	case CHMOD:
 		var id string
 		for {
 			fmt.Print("Doc id: ")
@@ -277,7 +342,7 @@ func handleDocApi(taskId int) {
 			Roles: roles,
 		}
 		apiClient.DocumentApi.ChangeDocPermissions(ctx, req, id)
-	case 4:
+	case GETMOD:
 		var id string
 		for {
 			fmt.Print("Doc id: ")
@@ -290,8 +355,19 @@ func handleDocApi(taskId int) {
 				break
 			}
 		}
-		apiClient.DocumentApi.GetDocPermissions(ctx, id)
-	case 6:
+		perms, _, err := apiClient.DocumentApi.GetDocPermissions(ctx, id)
+		if err != nil {
+			var swagErr *client.GenericSwaggerError = &client.GenericSwaggerError{}
+			if errors.As(err, swagErr) {
+				fmt.Println("Error:", swagErr.Error(), swagErr.Body())
+				return
+			}
+			fmt.Println(err.Error())
+			return
+		}
+		jason, _ := json.Marshal(perms)
+		fmt.Println(string(jason))
+	case GETDOC:
 		var id string
 		for {
 			fmt.Print("Doc id: ")
@@ -311,6 +387,22 @@ func handleDocApi(taskId int) {
 }
 
 func main() {
+	ctx = context.Background()
+	tokenBytes, err := os.ReadFile("token.json")
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			fmt.Println("Error:", err)
+			return
+		}
+	} else {
+		var login *client.LoginResp = &client.LoginResp{}
+		err = json.Unmarshal(tokenBytes, login)
+		if err != nil {
+			fmt.Println("Error:", err)
+			return
+		}
+		ctx = context.WithValue(ctx, client.ContextAccessToken, login.Token)
+	}
 	serviceInt := flag.Int("service", -1, "0: Users API\n1: Documents API")
 	taskInt := flag.Int("task", -1, "Task id for selected API")
 

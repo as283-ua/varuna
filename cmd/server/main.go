@@ -11,21 +11,12 @@ package main
 import (
 	"log"
 	"net/http"
-
-	// WARNING!
-	// Change this to a fully-qualified import path
-	// once you place this file into your project.
-	// For example,
-	//
-	//    sw "github.com/myname/myrepo/go"
-	//
 	sw "varuna-openapi/internal/server"
 )
 
 func main() {
-	log.Printf("Server started")
-
 	router := sw.NewRouter()
 
-	log.Fatal(http.ListenAndServe(":8080", router))
+	log.Printf("Server started https://localhost:8080/")
+	log.Fatal(http.ListenAndServeTLS(":8080", "localhost.pem", "localhost-key.pem", router))
 }
