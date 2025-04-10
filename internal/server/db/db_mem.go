@@ -7,13 +7,13 @@ import (
 type Role string
 
 const (
-	RoleSoftware Role = "Software"
-	RoleHardware Role = "Hardware"
-	RoleDevops   Role = "DevOps"
-	RoleHR       Role = "HR"
-	RoleFinance  Role = "Finance"
-	RoleQA       Role = "QA"
-	RoleAdmin    Role = "Admin"
+	RoleSoftware Role = "software"
+	RoleHardware Role = "hardware"
+	RoleDevops   Role = "devops"
+	RoleHR       Role = "hr"
+	RoleFinance  Role = "finance"
+	RoleQA       Role = "qa"
+	RoleAdmin    Role = "admin"
 )
 
 type User struct {
@@ -63,7 +63,13 @@ func (db *DataBase) AddFile(file File) {
 var DB DataBase
 
 func init() {
-	DB = DataBase{}
+	DB = DataBase{
+		Users:     make(map[string]User),
+		Files:     make([]File, 0),
+		RoleFiles: make(map[Role][]int),
+		RoleUsers: make(map[Role][]string),
+		UserFiles: make(map[string][]int),
+	}
 
 	DB.AddRole(RoleSoftware)
 	DB.AddRole(RoleDevops)
@@ -113,6 +119,12 @@ func init() {
 		Name:      "Archivo finanza",
 		Owner:     "aic32",
 		Roles:     []string{string(RoleFinance)},
+		CreatedAt: time.Now(),
+	})
+	DB.AddFile(File{
+		Name:      "Importante pa todos",
+		Owner:     "aic32",
+		Roles:     []string{string(RoleFinance), string(RoleDevops), string(RoleSoftware)},
 		CreatedAt: time.Now(),
 	})
 }

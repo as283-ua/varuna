@@ -47,10 +47,10 @@ func GetDocument(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func ListRoleDocuments(w http.ResponseWriter, r *http.Request) {
+func ListRoleDocuments(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	authHeader := r.Header.Get("Authorization")
+	authHeader := req.Header.Get("Authorization")
 	if authHeader == "" {
 		http.Error(w, `{"error": "Authorization header required"}`, http.StatusBadRequest)
 		return
@@ -61,20 +61,20 @@ func ListRoleDocuments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path := strings.TrimPrefix(r.URL.Path, "/roles/")
-	parts = strings.SplitN(path, "/", 2)
-	if len(parts) < 2 || parts[1] != "docs" {
-		http.Error(w, `{"error": "Invalid path"}`, http.StatusBadRequest)
-		return
-	}
-	role := db.Role(parts[0])
-
 	token := parts[1]
 	user, ok := db.DB.Users[token]
 	if !ok {
 		http.Error(w, `{"error": "Invalid token"}`, http.StatusBadRequest)
 		return
 	}
+
+	path := strings.TrimPrefix(req.URL.Path, "/roles/")
+	parts = strings.SplitN(path, "/", 2)
+	if len(parts) < 2 || parts[1] != "docs" {
+		http.Error(w, `{"error": "Invalid path"}`, http.StatusBadRequest)
+		return
+	}
+	role := db.Role(strings.ToLower(parts[0]))
 
 	hasRole := false
 	for _, r := range user.Roles {
@@ -88,20 +88,28 @@ func ListRoleDocuments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	filesIdx, ok := db.DB.RoleFiles[role]
-	if !ok {
-		http.Error(w, `{"error": "Role not found"}`, http.StatusBadRequest)
-		return
+	var filesIdx []int
+	if role == db.RoleAdmin {
+		filesIdx = make([]int, len(db.DB.Files))
+		for i := 0; i < len(filesIdx); i++ {
+			filesIdx[i] = i
+		}
+	} else {
+		filesIdx, ok = db.DB.RoleFiles[role]
+		if !ok {
+			http.Error(w, `{"error": "Role not found"}`, http.StatusBadRequest)
+			return
+		}
 	}
 
 	page := 1
 	size := 10
-	if p := r.URL.Query().Get("page"); p != "" {
+	if p := req.URL.Query().Get("page"); p != "" {
 		if val, err := strconv.Atoi(p); err == nil && val >= 1 {
 			page = val
 		}
 	}
-	if s := r.URL.Query().Get("size"); s != "" {
+	if s := req.URL.Query().Get("size"); s != "" {
 		if val, err := strconv.Atoi(s); err == nil && val >= 1 {
 			size = val
 		}
