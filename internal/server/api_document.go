@@ -80,7 +80,7 @@ func ListRoleDocuments(w http.ResponseWriter, req *http.Request) {
 
 	hasRole := false
 	for _, r := range user.Roles {
-		if r == string(role) {
+		if r == role {
 			hasRole = true
 			break
 		}
@@ -134,14 +134,17 @@ func ListRoleDocuments(w http.ResponseWriter, req *http.Request) {
 	for _, idx := range filesIdx[start:end] {
 		f := db.DB.Files[idx]
 
+		strRoles := make([]string, len(f.Roles))
+		for i, r := range f.Roles {
+			strRoles[i] = string(r)
+		}
+
 		doc := Document{
 			DocId:        int64(idx),
 			DocName:      f.Name,
-			Hash:         "", // hash is not stored in your db.File, add it if needed
-			Description:  "", // no description in File, same as above
 			CreationDate: f.CreatedAt.Format(time.RFC3339),
 			Permissions: &SharePermissions{
-				Roles: f.Roles,
+				Roles: strRoles,
 			},
 		}
 		result = append(result, doc)
@@ -199,7 +202,7 @@ func UploadDocument(w http.ResponseWriter, r *http.Request) {
 	roles := strings.Split(rolestr, ",")
 
 	for _, r := range roles {
-		if !slices.Contains(user.Roles, r) {
+		if !slices.Contains(user.Roles, db.Role(r)) {
 			http.Error(w, `{"error": "Invalid requested role for file '`+r+`'. User is not part of said role"}`, http.StatusBadRequest)
 			return
 		}
