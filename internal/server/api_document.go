@@ -9,13 +9,15 @@
 package server
 
 import (
+	"bytes"
 	"crypto/sha512"
-	"encoding/hex"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -183,10 +185,24 @@ func UploadDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hashHeader := r.Header.Get("X-Hash")
-	if hashHeader == "" {
+	hashHeader64 := r.Header.Get("X-Hash")
+	if hashHeader64 == "" {
 		http.Error(w, `{"error": "Missing required header: X-Hash"}`, http.StatusBadRequest)
 		return
+	}
+
+	rolestr := r.URL.Query().Get("roles")
+	if rolestr == "" {
+		http.Error(w, `{"error": "Missing required query parameter: roles"}`, http.StatusBadRequest)
+		return
+	}
+	roles := strings.Split(rolestr, ",")
+
+	for _, r := range roles {
+		if !slices.Contains(user.Roles, r) {
+			http.Error(w, `{"error": "Invalid requested role for file '`+r+`'. User is not part of said role"}`, http.StatusBadRequest)
+			return
+		}
 	}
 
 	file, _, err := r.FormFile("file")
@@ -197,19 +213,22 @@ func UploadDocument(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 
 	hasher := sha512.New()
-	data, err := io.ReadAll(io.TeeReader(file, hasher))
+	data, err := io.ReadAll(file)
 	if err != nil {
 		http.Error(w, `{"error": "Failed to read file content"}`, http.StatusBadRequest)
 		return
 	}
-	calculatedHash := hex.EncodeToString(hasher.Sum(nil))
+	hasher.Write(data)
+	calculatedHash := hasher.Sum(nil)
+	var hashHeader []byte = make([]byte, 64)
+	base64.StdEncoding.Decode(hashHeader, []byte(hashHeader64))
 
-	if calculatedHash != hashHeader {
+	if !bytes.Equal(calculatedHash, hashHeader) {
 		http.Error(w, `{"error": "Hash mismatch: file integrity check failed"}`, http.StatusBadRequest)
 		return
 	}
 
-	filePath := fmt.Sprintf("files/%s", docName)
+	filePath := fmt.Sprintf("files/%s_%s", user.Username, docName)
 	err = os.WriteFile(filePath, data, 0644)
 	if err != nil {
 		http.Error(w, `{"error": "Failed to store file on server"}`, http.StatusInternalServerError)

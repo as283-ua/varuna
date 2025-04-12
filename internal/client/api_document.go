@@ -9,9 +9,13 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"log"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
@@ -532,10 +536,9 @@ Upload a doc to your account
   - @param xHash Hash value of the original doc to verify integrity
   - @param docName Name of the doc to display in the app
 */
-func (a *DocumentApiService) UploadDocument(ctx context.Context, doc *os.File, xHash string, docName string) (*http.Response, error) {
+func (a *DocumentApiService) UploadDocument(ctx context.Context, doc *os.File, xHash string, docName string, roles string) (*http.Response, error) {
 	var (
 		localVarHttpMethod = strings.ToUpper("Post")
-		localVarPostBody   interface{}
 		localVarFileName   string
 		localVarFileBytes  []byte
 	)
@@ -548,14 +551,7 @@ func (a *DocumentApiService) UploadDocument(ctx context.Context, doc *os.File, x
 	localVarFormParams := url.Values{}
 
 	localVarQueryParams.Add("docName", parameterToString(docName, ""))
-	// to determine the Content-Type header
-	localVarHttpContentTypes := []string{"multipart/form-data"}
-
-	// set Content-Type header
-	localVarHttpContentType := selectHeaderContentType(localVarHttpContentTypes)
-	if localVarHttpContentType != "" {
-		localVarHeaderParams["Content-Type"] = localVarHttpContentType
-	}
+	localVarQueryParams.Add("roles", parameterToString(roles, ""))
 
 	// to determine the Accept header
 	localVarHttpHeaderAccepts := []string{}
@@ -566,14 +562,26 @@ func (a *DocumentApiService) UploadDocument(ctx context.Context, doc *os.File, x
 		localVarHeaderParams["Accept"] = localVarHttpHeaderAccept
 	}
 	localVarHeaderParams["X-Hash"] = parameterToString(xHash, "")
-	localVarFile := doc
-	if localVarFile != nil {
-		fbs, _ := ioutil.ReadAll(localVarFile)
-		localVarFileBytes = fbs
-		localVarFileName = localVarFile.Name()
-		localVarFile.Close()
+	var buff bytes.Buffer
+	if doc != nil {
+		w := multipart.NewWriter(&buff)
+		writer, err := w.CreateFormFile("file", docName)
+		if err != nil {
+			log.Fatal(err)
+		}
+		written, err := io.Copy(writer, doc)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if written == 0 {
+			log.Fatal("no bytes")
+		}
+		w.Close()
+
+		localVarHeaderParams["Content-Type"] = w.FormDataContentType()
 	}
-	r, err := a.client.prepareRequest(ctx, localVarPath, localVarHttpMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, localVarFileName, localVarFileBytes)
+
+	r, err := a.client.prepareRequest(ctx, localVarPath, localVarHttpMethod, &buff, localVarHeaderParams, localVarQueryParams, localVarFormParams, localVarFileName, localVarFileBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -583,7 +591,7 @@ func (a *DocumentApiService) UploadDocument(ctx context.Context, doc *os.File, x
 		return localVarHttpResponse, err
 	}
 
-	localVarBody, err := ioutil.ReadAll(localVarHttpResponse.Body)
+	localVarBody, err := io.ReadAll(localVarHttpResponse.Body)
 	localVarHttpResponse.Body.Close()
 	if err != nil {
 		return localVarHttpResponse, err

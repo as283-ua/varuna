@@ -16,6 +16,16 @@ const (
 	RoleAdmin    Role = "admin"
 )
 
+var Roles = []Role{
+	RoleSoftware,
+	RoleHardware,
+	RoleDevops,
+	RoleHR,
+	RoleFinance,
+	RoleQA,
+	RoleAdmin,
+}
+
 type User struct {
 	Username string   `json:"username"`
 	Password string   `json:"password"`

@@ -10,10 +10,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strconv"
+	"strings"
 	"syscall"
 	"varuna-openapi/internal/client"
+	"varuna-openapi/internal/server/db"
 
 	"github.com/antihax/optional"
 	"golang.org/x/term"
@@ -203,31 +206,55 @@ func handleDocApi(taskId int) {
 
 	switch DocOp(taskId) {
 	case UPLOAD:
-		fmt.Print("File path: ")
-		fileMsg, _, err := cmdReader.ReadLine()
-		if err != nil {
-			fmt.Println(err.Error())
-			os.Exit(1)
-			return
-		}
+		// fmt.Print("File path: ")
+		// fileMsg, _, err := cmdReader.ReadLine()
+		// if err != nil {
+		// 	fmt.Println(err.Error())
+		// 	os.Exit(1)
+		// 	return
+		// }
+		fileMsg := []byte("go.mod")
 		file, err := os.Open(string(fileMsg))
 		if err != nil {
-			fmt.Println(err.Error())
-			os.Exit(1)
-			return
+			log.Fatal(err.Error())
 		}
 		defer file.Close()
 		hasher := sha512.New()
 		if _, err := io.Copy(hasher, file); err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
-
-		fmt.Print("Doc name: ")
-		docName, _, _ := cmdReader.ReadLine()
 
 		hash := hasher.Sum(nil)
 		hash64 := base64.StdEncoding.EncodeToString(hash)
-		_, err = apiClient.DocumentApi.UploadDocument(ctx, file, hash64, string(docName))
+
+		// fmt.Print("Doc name: ")
+		// docName, _, _ := cmdReader.ReadLine()
+
+		docName := []byte("go.mod")
+		_, err = file.Seek(0, io.SeekStart)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		for i, v := range db.Roles {
+			fmt.Printf("\t%v: %v\n", i, v)
+		}
+		fmt.Print("Select roles by index separated by commas: ")
+		rolesStr, _, _ := cmdReader.ReadLine()
+
+		rolesIdx := strings.Split(string(rolesStr), ",")
+		roles := ""
+		for _, v := range rolesIdx {
+			idx, err := strconv.Atoi(strings.Trim(v, " "))
+			if err != nil {
+				log.Fatal(err)
+			}
+			roles += string(db.Roles[idx]) + ","
+		}
+
+		roles = roles[:len(roles)-1]
+
+		_, err = apiClient.DocumentApi.UploadDocument(ctx, file, hash64, string(docName), roles)
 		if err != nil {
 			var swagErr *client.GenericSwaggerError = &client.GenericSwaggerError{}
 			if errors.As(err, swagErr) {
