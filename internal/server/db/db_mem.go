@@ -1,7 +1,12 @@
 package db
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
+	"errors"
+	"io"
+	"log"
 	"time"
 )
 
@@ -66,13 +71,63 @@ func (db *DataBase) AddUser(user User) {
 	}
 }
 
-func (db *DataBase) AddFile(file File) {
+func (db *DataBase) AddFile(file File, key []byte) {
+	file.RoleKeys = make(map[Role][]byte)
+	var err error
+	for _, v := range file.Roles {
+		file.RoleKeys[v], err = Encrypt(key, DB.RoleKeys[v])
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
 	db.Files = append(db.Files, file)
 	fileIdx := len(db.Files) - 1
 	db.UserFiles[file.Owner] = append(db.UserFiles[file.Owner], fileIdx)
 	for _, v := range file.Roles {
 		db.RoleFiles[Role(v)] = append(db.RoleFiles[Role(v)], fileIdx)
 	}
+}
+
+func Encrypt(data, key []byte) (out []byte, err error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, err
+	}
+
+	ciphertext := gcm.Seal(nil, nonce, data, nil)
+	out = append(nonce, ciphertext...)
+	return out, nil
+}
+
+func Decrypt(data, key []byte) (out []byte, err error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	nonceSize := gcm.NonceSize()
+	if len(data) < nonceSize {
+		return nil, errors.New("ciphertext too short")
+	}
+
+	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
+	out, err = gcm.Open(nil, nonce, ciphertext, nil)
+	return
 }
 
 var DB DataBase
@@ -119,28 +174,40 @@ func init() {
 		Roles:    []Role{RoleAdmin},
 	})
 
+	key := make([]byte, 32)
+	rand.Read(key)
+
 	DB.AddFile(File{
 		Name:      "Archivo sw",
 		Owner:     "as283",
 		Roles:     []Role{RoleSoftware, RoleQA},
 		CreatedAt: time.Now(),
-	})
+	}, key)
+
+	key = make([]byte, 32)
+	rand.Read(key)
 	DB.AddFile(File{
 		Name:      "Archivo devops",
 		Owner:     "dlc5",
 		Roles:     []Role{RoleDevops},
 		CreatedAt: time.Now(),
-	})
+	}, key)
+
+	key = make([]byte, 32)
+	rand.Read(key)
 	DB.AddFile(File{
 		Name:      "Archivo finanza",
 		Owner:     "aic32",
 		Roles:     []Role{RoleFinance},
 		CreatedAt: time.Now(),
-	})
+	}, key)
+
+	key = make([]byte, 32)
+	rand.Read(key)
 	DB.AddFile(File{
 		Name:      "Importante pa todos",
 		Owner:     "aic32",
 		Roles:     []Role{RoleFinance, RoleDevops, RoleSoftware},
 		CreatedAt: time.Now(),
-	})
+	}, key)
 }

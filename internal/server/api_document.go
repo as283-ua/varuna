@@ -10,6 +10,7 @@ package server
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/sha512"
 	"encoding/base64"
 	"encoding/json"
@@ -231,8 +232,13 @@ func UploadDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	key := make([]byte, 32)
+	rand.Read(key)
+
+	encData, _ := db.Encrypt(data, key)
+
 	filePath := fmt.Sprintf("files/%s_%s", user.Username, docName)
-	err = os.WriteFile(filePath, data, 0644)
+	err = os.WriteFile(filePath, encData, 0644)
 	if err != nil {
 		http.Error(w, `{"error": "Failed to store file on server"}`, http.StatusInternalServerError)
 		return
@@ -244,7 +250,7 @@ func UploadDocument(w http.ResponseWriter, r *http.Request) {
 		Owner:     token,
 		Roles:     user.Roles,
 		CreatedAt: time.Now(),
-	})
+	}, key)
 
 	w.WriteHeader(http.StatusOK)
 }
