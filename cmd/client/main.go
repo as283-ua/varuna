@@ -206,14 +206,14 @@ func handleDocApi(taskId int) {
 
 	switch DocOp(taskId) {
 	case UPLOAD:
-		// fmt.Print("File path: ")
-		// fileMsg, _, err := cmdReader.ReadLine()
-		// if err != nil {
-		// 	fmt.Println(err.Error())
-		// 	os.Exit(1)
-		// 	return
-		// }
-		fileMsg := []byte("go.mod")
+		fmt.Print("File path: ")
+		fileMsg, _, err := cmdReader.ReadLine()
+		if err != nil {
+			fmt.Println(err.Error())
+			os.Exit(1)
+			return
+		}
+		// fileMsg := []byte("go.mod")
 		file, err := os.Open(string(fileMsg))
 		if err != nil {
 			log.Fatal(err.Error())
@@ -227,10 +227,10 @@ func handleDocApi(taskId int) {
 		hash := hasher.Sum(nil)
 		hash64 := base64.StdEncoding.EncodeToString(hash)
 
-		// fmt.Print("Doc name: ")
-		// docName, _, _ := cmdReader.ReadLine()
+		fmt.Print("Doc name: ")
+		docName, _, _ := cmdReader.ReadLine()
 
-		docName := []byte("go.mod")
+		// docName := []byte("go.mod")
 		_, err = file.Seek(0, io.SeekStart)
 		if err != nil {
 			log.Fatal(err)

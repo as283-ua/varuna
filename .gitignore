@@ -32,3 +32,6 @@ client/client
 **.crt
 **.csr
 **.ext
+
+**.db
+files/
