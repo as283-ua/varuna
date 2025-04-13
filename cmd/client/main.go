@@ -386,14 +386,15 @@ func handleDocApi(taskId int) {
 		}
 		apiClient.DocumentApi.DeleteDocument(ctx, id)
 	case CHMOD:
-		var id string // = "4"
+		var id string
 		for {
 			fmt.Print("Doc id: ")
-			id, _, _ := cmdReader.ReadLine()
-			if len(id) == 0 {
+			idBytes, _, _ := cmdReader.ReadLine()
+			if len(idBytes) == 0 {
 				continue
 			}
-			_, err = strconv.Atoi(string(id))
+			id = string(idBytes)
+			_, err = strconv.Atoi(id)
 			if err == nil {
 				break
 			}
@@ -409,7 +410,6 @@ func handleDocApi(taskId int) {
 		rolesStr, _, _ := cmdReader.ReadLine()
 		rolesIdx := strings.Split(string(rolesStr), ",")
 		for _, v := range rolesIdx {
-			break
 			idx, err := strconv.Atoi(strings.Trim(v, " "))
 			if err != nil {
 				log.Fatal(err)
@@ -420,6 +420,7 @@ func handleDocApi(taskId int) {
 		req := client.SharePermissions{
 			Roles: roles,
 		}
+
 		_, err := apiClient.DocumentApi.ChangeDocPermissions(ctx, req, id)
 		if err != nil {
 			var swagErr *client.GenericSwaggerError = &client.GenericSwaggerError{}
