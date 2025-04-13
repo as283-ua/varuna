@@ -280,8 +280,16 @@ func handleDocApi(taskId int) {
 		}
 		apiClient.DocumentApi.DownloadDocument(ctx, id)
 	case DOC_ROLES:
+		for i, v := range db.Roles {
+			fmt.Printf("\t%v: %v\n", i, v)
+		}
 		fmt.Print("Role: ")
-		role, _, _ := cmdReader.ReadLine()
+		idxStr, _, _ := cmdReader.ReadLine()
+		idx, err := strconv.Atoi(strings.Trim(string(idxStr), " "))
+		if err != nil {
+			log.Fatal(err)
+		}
+		role := db.Roles[idx]
 		var page, count int
 		for {
 			fmt.Print("Items per page: ")
@@ -291,9 +299,10 @@ func handleDocApi(taskId int) {
 				break
 			}
 			count, err = strconv.Atoi(string(countStr))
-			if err != nil {
+			if err == nil {
 				break
 			}
+			fmt.Println(err)
 		}
 		for {
 			fmt.Print("Page: ")
@@ -303,15 +312,38 @@ func handleDocApi(taskId int) {
 				break
 			}
 			page, err = strconv.Atoi(string(pageStr))
-			if err != nil {
+			if err == nil {
 				break
 			}
+			fmt.Println(err)
 		}
 		opts := &client.DocumentApiListRoleDocumentsOpts{
 			Page: optional.NewInt32(int32(page)),
 			Size: optional.NewInt32(int32(count)),
 		}
-		apiClient.DocumentApi.ListRoleDocuments(ctx, string(role), opts)
+		roleFiles, _, err := apiClient.DocumentApi.ListRoleDocuments(ctx, string(role), opts)
+		if err != nil {
+			var swagErr *client.GenericSwaggerError = &client.GenericSwaggerError{}
+			if errors.As(err, swagErr) {
+				fmt.Println("Error:", swagErr.Error(), string(swagErr.Body()))
+				return
+			}
+			fmt.Println(err.Error())
+			return
+		}
+		for _, v := range roleFiles {
+			fmt.Printf("%v:\n\tname: %v\n\tdate:%v\n", v.DocId, v.DocName, v.CreationDate)
+			fmt.Print("\troles: ")
+			l := len(v.Permissions.Roles)
+			roles := ""
+			for i, role := range v.Permissions.Roles {
+				roles += role
+				if i+1 != l {
+					roles += ", "
+				}
+			}
+			fmt.Println(roles)
+		}
 	case DELETE:
 		var id string
 		for {
