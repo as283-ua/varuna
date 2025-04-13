@@ -1,13 +1,12 @@
 package db
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
+	"bytes"
 	"crypto/rand"
-	"errors"
-	"io"
 	"log"
+	"os"
 	"time"
+	"varuna-openapi/internal/server/util"
 )
 
 type Role string
@@ -43,7 +42,7 @@ type File struct {
 	Name      string          `json:"name"`
 	Owner     string          `json:"owner,omitempty"`
 	Roles     []Role          `json:"roles"`
-	RoleKeys  map[Role][]byte `json:"roles"` // role -> encrypted key with role key
+	RoleKeys  map[Role][]byte `json:"rolekeys"` // role -> encrypted key with role key
 	CreatedAt time.Time       `json:"createdAt"`
 }
 
@@ -54,6 +53,7 @@ type DataBase struct {
 	RoleUsers map[Role][]string `json:"roleUsers"`
 	UserFiles map[string][]int  `json:"userFiles"`
 	RoleKeys  map[Role][]byte   `json:"roleKeys"`
+	KMS       map[Role][]byte   `json:"kms"`
 }
 
 func (db *DataBase) AddRole(role Role) {
@@ -61,6 +61,10 @@ func (db *DataBase) AddRole(role Role) {
 	db.RoleUsers[role] = make([]string, 0)
 	db.RoleKeys[role] = make([]byte, 32)
 	rand.Read(db.RoleKeys[role])
+
+	b := make([]byte, 32)
+	rand.Read(b)
+	db.KMS[role] = b
 }
 
 func (db *DataBase) AddUser(user User) {
@@ -75,7 +79,7 @@ func (db *DataBase) AddFile(file File, key []byte) {
 	file.RoleKeys = make(map[Role][]byte)
 	var err error
 	for _, v := range file.Roles {
-		file.RoleKeys[v], err = Encrypt(key, DB.RoleKeys[v])
+		file.RoleKeys[v], err = util.Encrypt(key, DB.RoleKeys[v])
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -88,51 +92,42 @@ func (db *DataBase) AddFile(file File, key []byte) {
 	}
 }
 
-func Encrypt(data, key []byte) (out []byte, err error) {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return nil, err
-	}
-
-	ciphertext := gcm.Seal(nil, nonce, data, nil)
-	out = append(nonce, ciphertext...)
-	return out, nil
-}
-
-func Decrypt(data, key []byte) (out []byte, err error) {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-
-	nonceSize := gcm.NonceSize()
-	if len(data) < nonceSize {
-		return nil, errors.New("ciphertext too short")
-	}
-
-	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
-	out, err = gcm.Open(nil, nonce, ciphertext, nil)
-	return
-}
-
 var DB DataBase
 
-func init() {
+const DB_FILE = "varuna.db"
+
+func ImportDb(key []byte) error {
+	dbEnc, err := os.ReadFile(DB_FILE)
+	if err != nil {
+		return err
+	}
+	dbCompressed, err := util.Decrypt(dbEnc, key)
+	if err != nil {
+		return err
+	}
+	dbJson := util.Decompress(dbCompressed)
+	err = util.DecodeJSON(bytes.NewReader(dbJson), &DB)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func ExportDb(key []byte) error {
+	dbJson := util.EncodeJSON(DB)
+	dbCompressed := util.Compress(dbJson)
+	dbEnc, err := util.Encrypt(dbCompressed, key)
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile(DB_FILE, dbEnc, 0600)
+
+	return err
+}
+
+func CleanDb() {
 	DB = DataBase{
 		Users:     make(map[string]User),
 		Files:     make([]File, 0),
@@ -140,6 +135,7 @@ func init() {
 		RoleUsers: make(map[Role][]string),
 		UserFiles: make(map[string][]int),
 		RoleKeys:  make(map[Role][]byte, 0),
+		KMS:       make(map[Role][]byte),
 	}
 
 	DB.AddRole(RoleSoftware)

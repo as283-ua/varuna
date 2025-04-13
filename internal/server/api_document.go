@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 	"varuna-openapi/internal/server/db"
+	"varuna-openapi/internal/server/util"
 )
 
 func ChangeDocPermissions(w http.ResponseWriter, r *http.Request) {
@@ -235,7 +236,7 @@ func UploadDocument(w http.ResponseWriter, r *http.Request) {
 	key := make([]byte, 32)
 	rand.Read(key)
 
-	encData, _ := db.Encrypt(data, key)
+	encData, _ := util.Encrypt(data, key)
 
 	filePath := fmt.Sprintf("files/%s_%s", user.Username, docName)
 	err = os.WriteFile(filePath, encData, 0644)

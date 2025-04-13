@@ -17,6 +17,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"io"
 	"os"
 )
@@ -40,27 +41,45 @@ func EncodeJSON[T any](v T) []byte {
 	return buffer.Bytes()
 }
 
-// función para cifrar (AES-CTR 256), adjunta el IV al principio
-func Encrypt(data, key []byte) (out []byte) {
-	out = make([]byte, len(data)+16)    // reservamos espacio para el IV al principio
-	rand.Read(out[:16])                 // generamos el IV
-	blk, err := aes.NewCipher(key)      // cifrador en bloque (AES), usa key
-	FailOnError(err)                    // comprobamos el error
-	ctr := cipher.NewCTR(blk, out[:16]) // cifrador en flujo: modo CTR, usa IV
-	ctr.XORKeyStream(out[16:], data)    // ciframos los datos
-	return
+func Encrypt(data, key []byte) (out []byte, err error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, err
+	}
+
+	ciphertext := gcm.Seal(nil, nonce, data, nil)
+	out = append(nonce, ciphertext...)
+	return out, nil
 }
 
-// función para descifrar (AES-CTR 256)
 func Decrypt(data, key []byte) (out []byte, err error) {
-	out = make([]byte, len(data)-16) // la salida no va a tener el IV
-	blk, err := aes.NewCipher(key)   // cifrador en bloque (AES), usa key
+	block, err := aes.NewCipher(key)
 	if err != nil {
-		return
+		return nil, err
 	}
-	// FailOnError(err)                     // comprobamos el error
-	ctr := cipher.NewCTR(blk, data[:16]) // cifrador en flujo: modo CTR, usa IV
-	ctr.XORKeyStream(out, data[16:])     // desciframos (doble cifrado) los datos
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	nonceSize := gcm.NonceSize()
+	if len(data) < nonceSize {
+		return nil, errors.New("ciphertext too short")
+	}
+
+	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
+	out, err = gcm.Open(nil, nonce, ciphertext, nil)
 	return
 }
 

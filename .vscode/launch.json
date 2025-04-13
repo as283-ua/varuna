@@ -10,7 +10,10 @@
             "request": "launch",
             "mode": "debug",
             "program": "cmd/server/main.go",
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "VARUNA_PASS": "passa",
+            }
         },
         {
             "name": "Client",

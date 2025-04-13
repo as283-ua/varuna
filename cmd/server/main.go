@@ -9,12 +9,63 @@
 package main
 
 import (
+	"flag"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	sw "varuna-openapi/internal/server"
+	"varuna-openapi/internal/server/db"
+	"varuna-openapi/internal/server/util"
+
+	"golang.org/x/term"
 )
 
 func main() {
+	var passhash []byte
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		db.ExportDb(passhash)
+		log.Println("Exiting...")
+		os.Exit(0)
+	}()
+
+	cleanDb := flag.Bool("clean", false, "True if the database needs to be created from scratch. False by default")
+	_, err := os.Stat(db.DB_FILE)
+	if err != nil {
+		*cleanDb = true
+	}
+
+	pass := os.Getenv("VARUNA_PASS")
+	if pass == "" {
+		fmt.Print("Enter password: ")
+		passB, err := term.ReadPassword(int(syscall.Stdin))
+		println()
+		if err != nil {
+			log.Fatal(err)
+		}
+		pass = string(passB)
+	}
+	passhash = util.Hash([]byte(pass))
+
+	if *cleanDb {
+		db.CleanDb()
+	} else {
+		err = db.ImportDb(passhash)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	defer func() {
+		log.Println("Exporting encrypted database to", db.DB_FILE)
+		db.ExportDb(passhash)
+	}()
+
 	router := sw.NewRouter()
 
 	log.Printf("Server started https://localhost:8080/")
