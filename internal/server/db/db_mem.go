@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"log"
 	"os"
+	"slices"
 	"time"
 	"varuna-openapi/internal/server/util"
 )
@@ -85,6 +86,30 @@ func (db *DataBase) AddFile(file File, key []byte) {
 	for _, v := range file.Roles {
 		db.RoleFiles[Role(v)] = append(db.RoleFiles[Role(v)], fileIdx)
 	}
+}
+
+func (db *DataBase) ChmodFile(id int, roles []string, key []byte) {
+	file := db.Files[id]
+
+	for _, v := range file.Roles {
+		db.RoleFiles[v] = slices.DeleteFunc(db.RoleFiles[v], func(fid int) bool { return fid == id })
+	}
+
+	file.RoleKeys = make(map[Role][]byte)
+	file.Roles = make([]Role, 0)
+	for _, v := range roles {
+		role := Role(v)
+		file.Roles = append(file.Roles, role)
+		db.RoleFiles[role] = append(db.RoleFiles[role], id)
+	}
+	var err error
+	for _, v := range file.Roles {
+		file.RoleKeys[v], err = util.Encrypt(key, DB.KMS[v])
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+	db.Files[id] = file
 }
 
 var DB DataBase

@@ -32,6 +32,15 @@
             "program": "cmd/client/main.go",
             "cwd": "${workspaceFolder}",
             "args": ["-service", "1", "-task", "1"]
+        },
+        {
+            "name": "Client change perm",
+            "type": "go",
+            "request": "launch",
+            "mode": "debug",
+            "program": "cmd/client/main.go",
+            "cwd": "${workspaceFolder}",
+            "args": ["-service", "1", "-task", "5"]
         }
     ]
 }

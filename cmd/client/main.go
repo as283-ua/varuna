@@ -228,7 +228,8 @@ func handleDocApi(taskId int) {
 		hash64 := base64.StdEncoding.EncodeToString(hash)
 
 		fmt.Print("Doc name: ")
-		docName, _, _ := cmdReader.ReadLine()
+		docNameBytes, _, _ := cmdReader.ReadLine()
+		docName := string(docNameBytes)
 
 		// docName := []byte("go.mod")
 		_, err = file.Seek(0, io.SeekStart)
@@ -240,9 +241,10 @@ func handleDocApi(taskId int) {
 			fmt.Printf("\t%v: %v\n", i, v)
 		}
 		fmt.Print("Select roles by index separated by commas: ")
-		rolesStr, _, _ := cmdReader.ReadLine()
+		rolesBytes, _, _ := cmdReader.ReadLine()
+		rolesStr := string(rolesBytes)
 
-		rolesIdx := strings.Split(string(rolesStr), ",")
+		rolesIdx := strings.Split(rolesStr, ",")
 		roles := ""
 		for _, v := range rolesIdx {
 			idx, err := strconv.Atoi(strings.Trim(v, " "))
@@ -384,7 +386,7 @@ func handleDocApi(taskId int) {
 		}
 		apiClient.DocumentApi.DeleteDocument(ctx, id)
 	case CHMOD:
-		var id string
+		var id string // = "4"
 		for {
 			fmt.Print("Doc id: ")
 			id, _, _ := cmdReader.ReadLine()
@@ -392,40 +394,43 @@ func handleDocApi(taskId int) {
 				continue
 			}
 			_, err = strconv.Atoi(string(id))
-			if err != nil {
+			if err == nil {
 				break
 			}
 		}
 
 		roles := make([]string, 0)
-		users := make([]string, 0)
 
-		i := 0
-		for {
-			fmt.Printf("Role %v: ", i)
-			role, _, _ := cmdReader.ReadLine()
-			if len(id) == 0 {
-				break
+		for i, v := range db.Roles {
+			fmt.Printf("\t%v: %v\n", i, v)
+		}
+		fmt.Print("Select roles by index separated by commas: ")
+		// roles = []string{"qa"}
+		rolesStr, _, _ := cmdReader.ReadLine()
+		rolesIdx := strings.Split(string(rolesStr), ",")
+		for _, v := range rolesIdx {
+			break
+			idx, err := strconv.Atoi(strings.Trim(v, " "))
+			if err != nil {
+				log.Fatal(err)
 			}
-			roles = append(roles, string(role))
-			i++
+			roles = append(roles, string(db.Roles[idx]))
 		}
 
-		i = 0
-		for {
-			fmt.Printf("User %v: ", i)
-			user, _, _ := cmdReader.ReadLine()
-			if len(id) == 0 {
-				break
-			}
-			users = append(users, string(user))
-			i++
-		}
 		req := client.SharePermissions{
-			Users: users,
 			Roles: roles,
 		}
-		apiClient.DocumentApi.ChangeDocPermissions(ctx, req, id)
+		_, err := apiClient.DocumentApi.ChangeDocPermissions(ctx, req, id)
+		if err != nil {
+			var swagErr *client.GenericSwaggerError = &client.GenericSwaggerError{}
+			if errors.As(err, swagErr) {
+				fmt.Println("Error:", swagErr.Error(), string(swagErr.Body()))
+				return
+			}
+			fmt.Println(err.Error())
+			return
+		}
+		fmt.Println("Changed doc permissions successfully")
 	case GETMOD:
 		var id string
 		for {

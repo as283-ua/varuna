@@ -27,8 +27,95 @@ import (
 	"varuna-openapi/internal/server/util"
 )
 
-func ChangeDocPermissions(w http.ResponseWriter, r *http.Request) {
+func ChangeDocPermissions(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+
+	authHeader := req.Header.Get("Authorization")
+	if authHeader == "" {
+		http.Error(w, `{"error": "Authorization header required"}`, http.StatusBadRequest)
+		return
+	}
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+		http.Error(w, `{"error": "Invalid Authorization header format"}`, http.StatusBadRequest)
+		return
+	}
+
+	token := parts[1]
+	user, ok := db.DB.Users[token]
+	if !ok {
+		http.Error(w, `{"error": "Invalid token"}`, http.StatusBadRequest)
+		return
+	}
+
+	path := strings.TrimPrefix(req.URL.Path, "/docs/")
+	parts = strings.SplitN(path, "/", 2)
+	docId, err := strconv.Atoi(parts[0])
+	if err != nil {
+		http.Error(w, `{"error": "Bad id"}`, http.StatusBadRequest)
+		return
+	}
+
+	if docId >= len(db.DB.Files) || docId < 0 {
+		http.Error(w, `{"error": "Bad id"}`, http.StatusBadRequest)
+		return
+	}
+	fileMeta := db.DB.Files[docId]
+
+	if fileMeta.Owner != user.Username {
+		http.Error(w, `{"error": "Not the owner"}`, http.StatusUnauthorized)
+		return
+	}
+
+	body, _ := io.ReadAll(req.Body)
+	permissions := &SharePermissions{}
+	err = util.DecodeJSON(bytes.NewReader(body), permissions)
+	if err != nil {
+		http.Error(w, `{"error": "Not JSON"}`, http.StatusBadRequest)
+		return
+	}
+
+	filename := fmt.Sprintf("files/%v_%v", user.Username, fileMeta.Name)
+	encFile, err := os.ReadFile(filename)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
+		return
+	}
+
+	anyRole := fileMeta.Roles[0]
+	encKey := fileMeta.RoleKeys[anyRole]
+	roleKey := db.DB.KMS[anyRole]
+
+	key, err := util.Decrypt(encKey, roleKey)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
+		return
+	}
+	file, err := util.Decrypt(encFile, key)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
+		return
+	}
+	newKey := make([]byte, 32)
+	rand.Read(newKey)
+
+	newEncFile, err := util.Encrypt(file, newKey)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
+		return
+	}
+
+	err = os.WriteFile(filename, newEncFile, 0640)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
+		return
+	}
+	db.DB.ChmodFile(docId, permissions.Roles, newKey)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -250,6 +337,7 @@ func UploadDocument(w http.ResponseWriter, r *http.Request) {
 
 	err := r.ParseMultipartForm(10 << 20) // limit ~10MB
 	if err != nil {
+		log.Println(err)
 		http.Error(w, `{"error": "Failed to parse multipart form"}`, http.StatusBadRequest)
 		return
 	}
@@ -309,9 +397,10 @@ func UploadDocument(w http.ResponseWriter, r *http.Request) {
 	encData, _ := util.Encrypt(data, key)
 
 	filePath := fmt.Sprintf("files/%s_%s", user.Username, docName)
-	err = os.WriteFile(filePath, encData, 0644)
+	err = os.WriteFile(filePath, encData, 0640)
 	if err != nil {
-		http.Error(w, `{"error": "Failed to store file on server"}`, http.StatusInternalServerError)
+		log.Println(err)
+		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
 		return
 	}
 
