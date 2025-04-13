@@ -52,19 +52,14 @@ type DataBase struct {
 	RoleFiles map[Role][]int    `json:"roleFiles"`
 	RoleUsers map[Role][]string `json:"roleUsers"`
 	UserFiles map[string][]int  `json:"userFiles"`
-	RoleKeys  map[Role][]byte   `json:"roleKeys"`
 	KMS       map[Role][]byte   `json:"kms"`
 }
 
 func (db *DataBase) AddRole(role Role) {
 	db.RoleFiles[role] = make([]int, 0)
 	db.RoleUsers[role] = make([]string, 0)
-	db.RoleKeys[role] = make([]byte, 32)
-	rand.Read(db.RoleKeys[role])
-
-	b := make([]byte, 32)
-	rand.Read(b)
-	db.KMS[role] = b
+	db.KMS[role] = make([]byte, 32)
+	rand.Read(db.KMS[role])
 }
 
 func (db *DataBase) AddUser(user User) {
@@ -79,7 +74,7 @@ func (db *DataBase) AddFile(file File, key []byte) {
 	file.RoleKeys = make(map[Role][]byte)
 	var err error
 	for _, v := range file.Roles {
-		file.RoleKeys[v], err = util.Encrypt(key, DB.RoleKeys[v])
+		file.RoleKeys[v], err = util.Encrypt(key, DB.KMS[v])
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -134,7 +129,6 @@ func CleanDb() {
 		RoleFiles: make(map[Role][]int),
 		RoleUsers: make(map[Role][]string),
 		UserFiles: make(map[string][]int),
-		RoleKeys:  make(map[Role][]byte, 0),
 		KMS:       make(map[Role][]byte),
 	}
 

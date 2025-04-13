@@ -253,6 +253,7 @@ func handleDocApi(taskId int) {
 		}
 
 		roles = roles[:len(roles)-1]
+		// roles := "software"
 
 		_, err = apiClient.DocumentApi.UploadDocument(ctx, file, hash64, string(docName), roles)
 		if err != nil {
@@ -269,16 +270,40 @@ func handleDocApi(taskId int) {
 		var id string
 		for {
 			fmt.Print("Doc id: ")
-			id, _, _ := cmdReader.ReadLine()
-			if len(id) == 0 {
+			idBytes, _, _ := cmdReader.ReadLine()
+			if len(idBytes) == 0 {
 				continue
 			}
-			_, err = strconv.Atoi(string(id))
-			if err != nil {
+			id = string(idBytes)
+			_, err = strconv.Atoi(id)
+			if err == nil {
 				break
 			}
 		}
-		apiClient.DocumentApi.DownloadDocument(ctx, id)
+		fileContent, _, err := apiClient.DocumentApi.DownloadDocument(ctx, id)
+		if err != nil {
+			var swagErr *client.GenericSwaggerError = &client.GenericSwaggerError{}
+			if errors.As(err, swagErr) {
+				fmt.Println("Error:", swagErr.Error(), string(swagErr.Body()))
+				return
+			}
+			fmt.Println(err.Error())
+			return
+		}
+
+		filename := fmt.Sprint("varuna_", id)
+		dst, err := os.Create("downloads/" + filename)
+		if err != nil {
+			fmt.Println(err.Error())
+			return
+		}
+		defer dst.Close()
+		_, err = dst.Write(fileContent)
+		if err != nil {
+			fmt.Println(err.Error())
+			return
+		}
+		fmt.Println("Downloaded document successfully:", filename)
 	case DOC_ROLES:
 		for i, v := range db.Roles {
 			fmt.Printf("\t%v: %v\n", i, v)

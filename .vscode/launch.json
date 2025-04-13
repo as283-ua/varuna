@@ -12,17 +12,26 @@
             "program": "cmd/server/main.go",
             "cwd": "${workspaceFolder}",
             "env": {
-                "VARUNA_PASS": "passa",
+                "VARUNA_PASS": "sudo",
             }
         },
         {
-            "name": "Client",
+            "name": "Client upload",
             "type": "go",
             "request": "launch",
             "mode": "debug",
             "program": "cmd/client/main.go",
             "cwd": "${workspaceFolder}",
             "args": ["-service", "1", "-task", "0"]
+        },
+        {
+            "name": "Client download",
+            "type": "go",
+            "request": "launch",
+            "mode": "debug",
+            "program": "cmd/client/main.go",
+            "cwd": "${workspaceFolder}",
+            "args": ["-service", "1", "-task", "1"]
         }
     ]
 }

@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"slices"
@@ -36,9 +37,78 @@ func DeleteDocument(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func DownloadDocument(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+func DownloadDocument(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "application/octet-stream")
+
+	authHeader := req.Header.Get("Authorization")
+	if authHeader == "" {
+		http.Error(w, `{"error": "Authorization header required"}`, http.StatusBadRequest)
+		return
+	}
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+		http.Error(w, `{"error": "Invalid Authorization header format"}`, http.StatusBadRequest)
+		return
+	}
+
+	token := parts[1]
+	user, ok := db.DB.Users[token]
+	if !ok {
+		http.Error(w, `{"error": "Invalid token"}`, http.StatusBadRequest)
+		return
+	}
+
+	path := strings.TrimPrefix(req.URL.Path, "/docs/")
+	parts = strings.SplitN(path, "/", 2)
+	docId, err := strconv.Atoi(parts[0])
+	if err != nil {
+		http.Error(w, `{"error": "Bad id"}`, http.StatusBadRequest)
+		return
+	}
+	if docId >= len(db.DB.Files) || docId < 0 {
+		http.Error(w, `{"error": "Bad id"}`, http.StatusBadRequest)
+		return
+	}
+	fileMeta := db.DB.Files[docId]
+	var userRole *db.Role = nil
+	for _, v := range user.Roles {
+		if slices.Contains(fileMeta.Roles, v) {
+			userRole = &v
+			break
+		}
+	}
+
+	if userRole == nil {
+		http.Error(w, `{"error": "Bad role"}`, http.StatusUnauthorized)
+		return
+	}
+
+	roleKey := db.DB.KMS[*userRole]
+	filename := fmt.Sprintf("%v_%v", fileMeta.Owner, fileMeta.Name)
+
+	encFile, err := os.ReadFile("files/" + filename)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
+		return
+	}
+	encFileKey := fileMeta.RoleKeys[*userRole]
+	fileKey, err := util.Decrypt(encFileKey, roleKey)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
+		return
+	}
+	fileData, err := util.Decrypt(encFile, fileKey)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+fileMeta.Name+"\"")
 	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(fileData)
 }
 
 func GetDocPermissions(w http.ResponseWriter, r *http.Request) {
@@ -245,11 +315,16 @@ func UploadDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Printf("Storing document '%s' for user '%s' (%d bytes)\n", docName, user.Username, len(data))
+	rolesR := make([]db.Role, len(roles))
+	for i, v := range roles {
+		rolesR[i] = db.Role(v)
+	}
+	log.Printf("Storing document '%s' for user '%s' (%d bytes)\n", docName, user.Username, len(data))
+
 	db.DB.AddFile(db.File{
 		Name:      docName,
 		Owner:     token,
-		Roles:     user.Roles,
+		Roles:     rolesR,
 		CreatedAt: time.Now(),
 	}, key)
 

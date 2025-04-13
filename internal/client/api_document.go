@@ -174,13 +174,12 @@ Download a doc if the user role matches the doc permissions. Must have appropria
 
 @return *os.File
 */
-func (a *DocumentApiService) DownloadDocument(ctx context.Context, docId string) (*os.File, *http.Response, error) {
+func (a *DocumentApiService) DownloadDocument(ctx context.Context, docId string) ([]byte, *http.Response, error) {
 	var (
-		localVarHttpMethod  = strings.ToUpper("Get")
-		localVarPostBody    interface{}
-		localVarFileName    string
-		localVarFileBytes   []byte
-		localVarReturnValue *os.File
+		localVarHttpMethod = strings.ToUpper("Get")
+		localVarPostBody   interface{}
+		localVarFileName   string
+		localVarFileBytes  []byte
 	)
 
 	// create path and map variables
@@ -210,26 +209,18 @@ func (a *DocumentApiService) DownloadDocument(ctx context.Context, docId string)
 	}
 	r, err := a.client.prepareRequest(ctx, localVarPath, localVarHttpMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, localVarFileName, localVarFileBytes)
 	if err != nil {
-		return localVarReturnValue, nil, err
+		return nil, nil, err
 	}
 
 	localVarHttpResponse, err := a.client.callAPI(r)
 	if err != nil || localVarHttpResponse == nil {
-		return localVarReturnValue, localVarHttpResponse, err
+		return nil, localVarHttpResponse, err
 	}
 
 	localVarBody, err := ioutil.ReadAll(localVarHttpResponse.Body)
 	localVarHttpResponse.Body.Close()
 	if err != nil {
-		return localVarReturnValue, localVarHttpResponse, err
-	}
-
-	if localVarHttpResponse.StatusCode < 300 {
-		// If we succeed, return the data, otherwise pass on to decode error.
-		err = a.client.decode(&localVarReturnValue, localVarBody, localVarHttpResponse.Header.Get("Content-Type"))
-		if err == nil {
-			return localVarReturnValue, localVarHttpResponse, err
-		}
+		return nil, localVarHttpResponse, err
 	}
 
 	if localVarHttpResponse.StatusCode >= 300 {
@@ -242,15 +233,15 @@ func (a *DocumentApiService) DownloadDocument(ctx context.Context, docId string)
 			err = a.client.decode(&v, localVarBody, localVarHttpResponse.Header.Get("Content-Type"))
 			if err != nil {
 				newErr.error = err.Error()
-				return localVarReturnValue, localVarHttpResponse, newErr
+				return nil, localVarHttpResponse, newErr
 			}
 			newErr.model = v
-			return localVarReturnValue, localVarHttpResponse, newErr
+			return nil, localVarHttpResponse, newErr
 		}
-		return localVarReturnValue, localVarHttpResponse, newErr
+		return nil, localVarHttpResponse, newErr
 	}
 
-	return localVarReturnValue, localVarHttpResponse, nil
+	return localVarBody, localVarHttpResponse, nil
 }
 
 /*
