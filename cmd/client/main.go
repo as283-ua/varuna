@@ -93,7 +93,7 @@ func handleUserApi(taskId int) {
 		if err != nil {
 			var swagErr *client.GenericSwaggerError = &client.GenericSwaggerError{}
 			if errors.As(err, swagErr) {
-				fmt.Println("Error:", swagErr.Error(), swagErr.Body())
+				fmt.Println("Login error")
 				return
 			}
 			fmt.Println(err.Error())
@@ -111,6 +111,8 @@ func handleUserApi(taskId int) {
 			fmt.Println("Save token error:", err.Error())
 			return
 		}
+
+		fmt.Println("\nSuccess. Token saved locally")
 	case LIST_USERS:
 		var page, count int
 		for {

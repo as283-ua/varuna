@@ -24,6 +24,9 @@ import (
 )
 
 func main() {
+	cleanDb := flag.Bool("clean", false, "True if the database needs to be created from scratch. False by default")
+	flag.Parse()
+
 	var passhash []byte
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -34,7 +37,6 @@ func main() {
 		os.Exit(0)
 	}()
 
-	cleanDb := flag.Bool("clean", false, "True if the database needs to be created from scratch. False by default")
 	_, err := os.Stat(db.DB_FILE)
 	if err != nil {
 		*cleanDb = true
